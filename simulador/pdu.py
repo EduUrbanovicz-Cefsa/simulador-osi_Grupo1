@@ -70,6 +70,7 @@ class PDU:
     portas: tuple = (None, None)
 
     # Identificacao para a tela e o registro.
+    sessao: str = ""
     id_pacote: str = ""
     numero_quadro: str = ""
     numero_segmento: int = 1
