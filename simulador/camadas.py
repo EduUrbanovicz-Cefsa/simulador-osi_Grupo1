@@ -87,8 +87,9 @@ def _octetos(pdu):
 class Contexto:
     """O que a pilha de um dispositivo entrega a cada camada.
 
-    Os contadores de passo e de quadro devem ser os mesmos objetos em todos os
-    contextos de uma simulacao, para que a numeracao seja unica.
+    Os contadores de passo, de quadro e de sessao devem ser os mesmos objetos
+    em todos os contextos de uma simulacao, para que a numeracao seja unica:
+    em E3, H1 e H2 abrem S-0001 e S-0002, e nao duas vezes S-0001.
     """
 
     dispositivo: str
@@ -108,6 +109,7 @@ class Contexto:
 
     passos: object = field(default_factory=lambda: itertools.count(1))
     quadros: object = field(default_factory=lambda: itertools.count(1))
+    sessoes: object = field(default_factory=lambda: itertools.count(1))
 
     def proximo_passo(self):
         return next(self.passos)
@@ -203,13 +205,10 @@ class Sessao(Camada):
     numero = 5
     nome = "Sessao"
 
-    def __init__(self):
-        self._sessoes = itertools.count(1)
-
     def descer(self, pdu, contexto):
-        sessao = f"S-{next(self._sessoes):04d}"
+        sessao = f"S-{next(contexto.sessoes):04d}"
         cabecalho = Cabecalho(5, self._tamanho_do_cabecalho(contexto), {"sessao": sessao})
-        mensagem = pdu.encapsular(cabecalho, camada=5)
+        mensagem = replace(pdu, sessao=sessao).encapsular(cabecalho, camada=5)
         return (mensagem,), [self._evento(
             contexto, "ABRE",
             f"sessao {sessao} aberta, uma unica vez, antes da segmentacao",
@@ -218,7 +217,7 @@ class Sessao(Camada):
 
     def subir(self, pdu, contexto):
         sessao = self._meu_cabecalho(pdu).campos["sessao"]
-        mensagem = pdu.desencapsular(5, camada=6)
+        mensagem = replace(pdu.desencapsular(5, camada=6), sessao=sessao)
         return (mensagem,), [self._evento(
             contexto, "ENTREGA",
             f"sessao {sessao} reconhecida; mensagem entregue a camada 6",
@@ -284,8 +283,12 @@ class Transporte(Camada):
         return pedacos
 
     def subir(self, pdu, contexto):
+        # O fluxo e identificado pelo par de portas. Em E3, H1 e H2 falam com
+        # a mesma porta 443 a partir de 5210 e 6120: sao duas chaves, dois
+        # conjuntos de pendentes, e os segmentos de um nunca completam o outro.
         campos = self._meu_cabecalho(pdu).campos
         chave = (campos["porta_origem"], campos["porta_destino"])
+        fluxo = f"fluxo {chave[0]} -> {chave[1]}"
         numero, total = campos["segmento"], campos["total"]
 
         recebidos = self._pendentes.setdefault(chave, {})
@@ -293,7 +296,7 @@ class Transporte(Camada):
         if len(recebidos) < total:
             return (), [self._evento(
                 contexto, "RECEBE",
-                f"segmento {numero} de {total} guardado; aguardando "
+                f"segmento {numero} de {total} do {fluxo} guardado; aguardando "
                 f"{total - len(recebidos)}",
                 pdu,
             )]
@@ -317,7 +320,8 @@ class Transporte(Camada):
         contexto.processo = processo
         return (unidade,), [self._evento(
             contexto, "REMONTA",
-            f"{total} segmento(s) remontado(s) em ordem; porta {porta} -> '{processo}'",
+            f"{total} segmento(s) do {fluxo} remontado(s) em ordem; "
+            f"porta {porta} -> '{processo}'",
             unidade,
         )]
 
