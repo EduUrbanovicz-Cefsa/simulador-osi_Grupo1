@@ -22,3 +22,7 @@ node_modules/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Artefatos locais do empacotamento
+SimuladorOSI
+registro_*.txt
