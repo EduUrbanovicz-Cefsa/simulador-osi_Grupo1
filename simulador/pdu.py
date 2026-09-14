@@ -155,14 +155,21 @@ class PDU:
         A interface desenha esta lista diretamente (requisito V3): os
         cabecalhos ja acrescentados a esquerda, os dados no meio e o
         finalizador da camada 2 a direita.
+
+        Nas camadas 7 e 6 os dados ainda sao texto: o bloco mede os octetos
+        UTF-8, e nao os caracteres, para bater com o tamanho do evento.
         """
         blocos = [
             {"rotulo": f"H{c.camada}", "octetos": c.tamanho, "campos": c.campos}
             for c in self.cabecalhos
             if not c.finalizador
         ]
+        if isinstance(self.dados, str):
+            octetos_dos_dados = len(self.dados.encode("utf-8"))
+        else:
+            octetos_dos_dados = len(self.dados)
         blocos.append(
-            {"rotulo": "Dados", "octetos": len(self.dados), "campos": {}}
+            {"rotulo": "Dados", "octetos": octetos_dos_dados, "campos": {}}
         )
         blocos += [
             {"rotulo": f"T{c.camada}", "octetos": c.tamanho, "campos": c.campos}

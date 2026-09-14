@@ -168,6 +168,28 @@ def caso_texto_acentuado():
     return gera == codifica == entrega == octetos
 
 
+def caso_blocos_com_texto_acentuado():
+    """O bloco Dados de em_blocos() mede octetos, como o evento, e nao caracteres."""
+    texto = "Olá, H2! Comunicação de Dados"
+    octetos = len(texto.encode("utf-8"))
+    sim = Simulacao(TOPOLOGIA, envio("H2", texto))
+    divergentes, conferidos = [], 0
+    while (evento := sim.passo()) is not None:
+        blocos = sim.unidade.em_blocos()
+        dados = next(b["octetos"] for b in blocos if b["rotulo"] == "Dados")
+        # Nas camadas 7 e 6 nao ha cabecalho: o bloco Dados e a unidade inteira.
+        sem_cabecalho = len(blocos) == 1
+        if sem_cabecalho:
+            conferidos += 1
+        if (sem_cabecalho and dados != evento.tamanho) or dados != octetos:
+            divergentes.append(f"{evento.passo:03d} {evento.dispositivo} L{evento.camada} "
+                               f"{evento.acao}: bloco {dados} B, evento {evento.tamanho} B")
+    imprimir(divergentes)
+    print(f"   {len(texto)} caracteres, {octetos} octetos;  {conferidos} passos sem "
+          f"cabecalho conferidos contra o evento;  divergentes: {len(divergentes)}")
+    return conferidos >= 4 and not divergentes
+
+
 def caso_registro_em_arquivo():
     sim = rodar(CENARIOS["E1"])
     with tempfile.TemporaryDirectory() as pasta:
@@ -194,6 +216,7 @@ CASOS = [
     ("E5 destino inalcancavel", caso_inalcancavel_e5),
     ("E6 erro de bit em cabecalho", caso_erro_de_bit_e6),
     ("L7 reporta octetos, nao caracteres", caso_texto_acentuado),
+    ("bloco Dados em octetos com texto acentuado", caso_blocos_com_texto_acentuado),
     ("registro salvo em arquivo", caso_registro_em_arquivo),
 ]
 
