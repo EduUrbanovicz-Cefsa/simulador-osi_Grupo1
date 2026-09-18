@@ -57,25 +57,31 @@ def octetos_transmitidos(mensagem, enlaces):
     return sum((s + POR_SEGMENTO) * enlaces for s in segmentar(mensagem))
 
 
-def eficiencia(mensagem, transmitidos):
-    """Fracao da transmissao ocupada por dados uteis.
+def eficiencia(entregues, transmitidos):
+    """Fracao da transmissao ocupada por dados uteis que chegaram ao destino.
 
-    O numerador e a mensagem original, sem o cabecalho de sessao: o que o
-    usuario quis enviar, e nao o que a pilha acrescentou.
+    O numerador e a mensagem original entregue, sem o cabecalho de sessao: o
+    que o usuario quis enviar, e nao o que a pilha acrescentou. Quando nada
+    e entregue, o numerador e zero e a eficiencia tambem: e assim que E5 e E6
+    valem eta = 0 na tabela de validacao, apesar de terem transmitido
+    octetos pela rede.
     """
-    return mensagem / transmitidos
+    return entregues / transmitidos
 
 
-# Caso: (descricao, octetos da mensagem, enlaces percorridos por segmento,
-#        quadros esperados, octetos esperados, eficiencia esperada ou None)
+# Caso: (descricao, octetos da mensagem, octetos entregues ao destino,
+#        enlaces percorridos por segmento, quadros esperados, octetos
+#        esperados, eficiencia esperada)
 CASOS = [
-    ("E1 entrega direta",            42, 1, 1,  92, 45.7),
-    ("E2 entrega indireta",          42, 4, 4, 368, 11.4),
-    ("E3 demultiplexacao",           84, 4, 8, 736, 11.4),
-    ("E4 falha de enlace",           42, 4, 4, 368, 11.4),
-    ("E5 destino inalcancavel",      42, 1, 1,  92, None),
-    ("E6 erro de bit",               42, 3, 3, 276, None),
-    ("E7 mensagem longa",           100, 4, 12, 968, 10.3),
+    ("E1 entrega direta",            42,  42, 1, 1,  92, 45.7),
+    ("E2 entrega indireta",          42,  42, 4, 4, 368, 11.4),
+    ("E3 demultiplexacao",           84,  84, 4, 8, 736, 11.4),
+    ("E4 falha de enlace",           42,  42, 4, 4, 368, 11.4),
+    # E5 descarta na camada 3 de R1 e E6 na camada 2 de R3: transmitem
+    # octetos, mas nao entregam nenhum.
+    ("E5 destino inalcancavel",      42,   0, 1, 1,  92,  0.0),
+    ("E6 erro de bit",               42,   0, 3, 3, 276,  0.0),
+    ("E7 mensagem longa",           100, 100, 4, 12, 968, 10.3),
 ]
 
 
@@ -84,7 +90,7 @@ def executar():
     print(f"{'Caso':<26}{'Quadros':>8}{'Octetos':>10}{'Eficiencia':>13}   ")
     print("-" * 62)
 
-    for nome, mensagem, enlaces, quadros_esp, octetos_esp, efic_esp in CASOS:
+    for nome, mensagem, entregues, enlaces, quadros_esp, octetos_esp, efic_esp in CASOS:
         # E3 sao dois fluxos independentes; cada um segmenta por conta propria.
         fluxos = 2 if nome.startswith("E3") else 1
         por_fluxo = mensagem // fluxos
@@ -92,15 +98,15 @@ def executar():
         segmentos = segmentar(por_fluxo)
         quadros = len(segmentos) * enlaces * fluxos
         octetos = octetos_transmitidos(por_fluxo, enlaces) * fluxos
-        efic = round(eficiencia(mensagem, octetos) * 100, 1)
+        efic = round(eficiencia(entregues, octetos) * 100, 1)
 
         ok_quadros = quadros == quadros_esp
         ok_octetos = octetos == octetos_esp
-        ok_efic = efic_esp is None or efic == efic_esp
+        ok_efic = efic == efic_esp
         passou = ok_quadros and ok_octetos and ok_efic
         falhas += 0 if passou else 1
 
-        exibida = "sem entrega" if efic_esp is None else f"{efic:.1f}%"
+        exibida = f"{efic:.1f}%"
         marca = "ok" if passou else "FALHOU"
         print(f"{nome:<26}{quadros:>8}{octetos:>10}{exibida:>13}   {marca}")
 

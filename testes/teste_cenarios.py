@@ -24,15 +24,29 @@ from simulador.simulador import CENARIOS, MENSAGEM_E7, Simulacao  # noqa: E402
 TOPOLOGIA = Topologia.carregar()
 
 # Tabela de validacao oficial: quadros, octetos transmitidos e eficiencia em
-# porcentagem, ou None quando o cenario termina sem entrega.
+# porcentagem. E5 e E6 terminam sem entrega, e a eficiencia deles e 0,0% --
+# o valor que a especificacao traz na coluna (eta = 0), e nao um traco.
 TABELA = {
     "E1": (1, 92, 45.7),
     "E2": (4, 368, 11.4),
     "E3": (8, 736, 11.4),
     "E4": (4, 368, 11.4),
-    "E5": (1, 92, None),
-    "E6": (3, 276, None),
+    "E5": (1, 92, 0.0),
+    "E6": (3, 276, 0.0),
     "E7": (12, 968, 10.3),
+}
+
+# Numero de cada quadro na ordem de transmissao (C5: reinicia a cada
+# mensagem). E3 tem duas mensagens, e cada uma vai de Q1 a Q4; E7 tem uma so,
+# em tres segmentos, e vai de Q1 a Q12.
+QUADROS = {
+    "E1": ["Q1"],
+    "E2": ["Q1", "Q2", "Q3", "Q4"],
+    "E3": ["Q1", "Q1", "Q2", "Q2", "Q3", "Q3", "Q4", "Q4"],
+    "E4": ["Q1", "Q2", "Q3", "Q4"],
+    "E5": ["Q1"],
+    "E6": ["Q1", "Q2", "Q3"],
+    "E7": [f"Q{n}" for n in range(1, 13)],
 }
 
 
@@ -55,12 +69,10 @@ def caso_tabela_oficial():
         quadros_esp, octetos_esp, efic_esp = TABELA[codigo]
         efic = round(resumo.eficiencia * 100, 1)
 
-        if efic_esp is None:
-            ok_efic = resumo.octetos_uteis == 0 and resumo.eficiencia == 0
-            exibida = "sem entrega"
-        else:
-            ok_efic = efic == efic_esp
-            exibida = f"{efic:.1f}%"
+        # Um numero em todos os cenarios, inclusive nos que nao entregam nada:
+        # E5 e E6 valem 0,0%, e nao um texto no lugar do valor.
+        ok_efic = efic == efic_esp
+        exibida = f"{efic:.1f}%"
         passou = (resumo.quadros == quadros_esp
                   and resumo.octetos_transmitidos == octetos_esp and ok_efic)
         falhas += 0 if passou else 1
@@ -136,6 +148,62 @@ def caso_e3_segmentos_intercalados():
     print(f"   segmentos alternados: {alternados};  mensagens intactas e separadas: {intactas};"
           f"  {sim.resumo().quadros} quadros")
     return alternados and intactas and len(sim.entregas) == 2
+
+
+def caso_eficiencia_zero_sem_entrega():
+    """E5 e E6 apresentam eficiencia 0, e nao ausencia de valor.
+
+    A conta e uteis/transmitidos: sem entrega o numerador e zero, e a
+    eficiencia tambem. O que o cenario nao pode e deixar de apresentar um
+    numero, porque a tabela de validacao traz eta = 0 nas duas linhas.
+    """
+    ok = True
+    for codigo in ("E5", "E6"):
+        resumo = rodar(CENARIOS[codigo]).resumo()
+        certo = (resumo.octetos_uteis == 0 and resumo.eficiencia == 0.0
+                 and resumo.sobrecarga == 1.0)
+        ok = ok and certo
+        print(f"   {codigo}: {resumo.octetos_uteis} octetos uteis, eficiencia "
+              f"{resumo.eficiencia * 100:.1f}%, sobrecarga {resumo.sobrecarga * 100:.1f}%"
+              f"{'' if certo else '   FALHOU'}")
+    return ok
+
+
+def caso_quadros_reiniciam_por_mensagem():
+    """C5: os quadros sao numerados na ordem de transmissao, reiniciando a cada mensagem.
+
+    E3 e o caso que separa uma leitura da outra: sao duas mensagens, e cada
+    uma tem os seus Q1 a Q4. Uma contagem global daria Q1 a Q8. E7 e o
+    contraste: tres segmentos da mesma mensagem seguem numerados ate Q12.
+    """
+    ok = True
+    for codigo, esperados in QUADROS.items():
+        sim = rodar(CENARIOS[codigo])
+        obtidos = [t.quadro.numero_quadro for t in sim.transmissoes]
+        certo = obtidos == esperados
+        ok = ok and certo
+        pacotes = [t.quadro.id_pacote for t in sim.transmissoes]
+        print(f"   {codigo}: {' '.join(obtidos)}{'' if certo else '   FALHOU'}")
+        if codigo in ("E3", "E7"):
+            print(f"        pacotes: {' '.join(pacotes)}")
+        if not certo:
+            print(f"        esperado: {' '.join(esperados)}")
+
+    # Em E3 o numero do quadro se repete; quem desfaz a ambiguidade no
+    # registro e o pacote, que e dado de camada 3 e nao viola C4.
+    sim = rodar(CENARIOS["E3"])
+    por_pacote = {}
+    for t in sim.transmissoes:
+        por_pacote.setdefault(t.quadro.id_pacote, []).append(t.quadro.numero_quadro)
+    separados = por_pacote == {"H1-P1": ["Q1", "Q2", "Q3", "Q4"],
+                               "H2-P1": ["Q1", "Q2", "Q3", "Q4"]}
+    linhas = [linha for linha in sim.registro.linhas() if "ENQUADRA" in linha]
+    citam_o_pacote = all(" pacote H1-P1," in linha or " pacote H2-P1," in linha
+                         for linha in linhas)
+    print(f"   E3 por pacote: {por_pacote}")
+    print(f"   cada fluxo com Q1 a Q4: {separados};  "
+          f"as {len(linhas)} linhas ENQUADRA citam o pacote: {citam_o_pacote}")
+    return ok and separados and citam_o_pacote
 
 
 def caso_passo_a_passo():
@@ -214,6 +282,8 @@ CASOS = [
     ("mensagens coerentes com o destino", caso_mensagens_coerentes),
     ("E3 demultiplexacao por porta", caso_e3_demultiplexacao),
     ("E3 com segmentos dos dois fluxos intercalados", caso_e3_segmentos_intercalados),
+    ("eficiencia zero em E5 e E6", caso_eficiencia_zero_sem_entrega),
+    ("quadros reiniciam a cada mensagem (C5)", caso_quadros_reiniciam_por_mensagem),
     ("execucao passo a passo", caso_passo_a_passo),
     ("E6 sem camada 3 em R3", caso_e6_sem_camada_3_em_r3),
     ("enderecos fisicos de E2 e E4", caso_enderecos_fisicos_e2_e4),

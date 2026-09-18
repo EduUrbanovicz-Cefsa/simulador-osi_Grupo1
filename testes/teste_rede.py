@@ -1,7 +1,8 @@
 """Confere a topologia e a escolha de rota contra os valores do enunciado.
 
-Os resultados esperados vem do log de exemplo da especificacao e da
-descricao dos casos E1, E2, E4 e E5.
+Os resultados esperados vem da Tabela 3 da especificacao (as tabelas de
+encaminhamento de referencia), do log de exemplo e da descricao dos casos
+E1, E2, E4 e E5.
 """
 
 import os
@@ -10,6 +11,62 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from simulador.rede import Topologia
+
+# Tabela 3 da especificacao, as doze entradas: para cada roteador e cada
+# rede, (proximo salto, interface de saida, custo). "direta" indica rede
+# diretamente conectada, cujo custo a tabela de referencia nao atribui.
+#
+#          Rede A (10.0.1.0/24)   Rede B (10.0.2.0/24)   Rede C (10.0.3.0/24)
+#   R1     direta, e0             via R2, e2, custo 2    via R4, e1, custo 2
+#   R2     via R1, e0, custo 2    direta, e2             via R3, e1, custo 1
+#   R3     via R4, e0, custo 2    via R2, e1, custo 1    direta, e2
+#   R4     via R1, e0, custo 1    via R3, e1, custo 2    via R3, e1, custo 1
+TABELA_3 = {
+    "R1": {
+        "10.0.1.0/24": ("direta", "e0", 0),
+        "10.0.2.0/24": ("R2", "e2", 2),
+        "10.0.3.0/24": ("R4", "e1", 2),
+    },
+    "R2": {
+        "10.0.1.0/24": ("R1", "e0", 2),
+        "10.0.2.0/24": ("direta", "e2", 0),
+        "10.0.3.0/24": ("R3", "e1", 1),
+    },
+    "R3": {
+        "10.0.1.0/24": ("R4", "e0", 2),
+        "10.0.2.0/24": ("R2", "e1", 1),
+        "10.0.3.0/24": ("direta", "e2", 0),
+    },
+    "R4": {
+        "10.0.1.0/24": ("R1", "e0", 1),
+        "10.0.2.0/24": ("R3", "e1", 2),
+        "10.0.3.0/24": ("R3", "e1", 1),
+    },
+}
+
+
+def conferir_tabela_3(topologia, conferir):
+    """Confere as doze entradas da Tabela 3, uma a uma."""
+    print("Tabela 3: tabelas de encaminhamento de referencia")
+    print("-" * 72)
+    print(f"  {'':<4}{'rede':<16}{'proximo salto':<16}{'interface':<12}{'custo':>6}")
+    for roteador, esperado_da_rede in TABELA_3.items():
+        obtidas = {
+            rota.prefixo: (("direta" if rota.direta else rota.proximo_salto),
+                           rota.interface_de_saida, rota.custo)
+            for rota in topologia.tabela_de_encaminhamento(roteador)
+        }
+        for prefixo, esperado in esperado_da_rede.items():
+            obtido = obtidas.get(prefixo)
+            salto, interface, custo = obtido if obtido else ("-", "-", "-")
+            print(f"  {roteador:<4}{prefixo:<16}{salto:<16}{interface:<12}{custo:>6}")
+            conferir(f"Tabela 3: {roteador} -> {prefixo} "
+                     f"({esperado[0]}, {esperado[1]}, custo {esperado[2]})",
+                     obtido, esperado)
+        # Nenhuma rede a mais nem a menos: a tabela do roteador tem tres linhas.
+        conferir(f"Tabela 3: {roteador} tem exatamente as tres redes",
+                 sorted(obtidas), sorted(esperado_da_rede))
+    print()
 
 
 def executar():
@@ -24,12 +81,7 @@ def executar():
             print(f"       esperado: {esperado}")
             falhas.append(descricao)
 
-    print("Tabela de encaminhamento de R1")
-    print("-" * 62)
-    for rota in topologia.tabela_de_encaminhamento("R1"):
-        destino = "entrega direta" if rota.direta else f"via {rota.proximo_salto}"
-        print(f"  {rota.prefixo:<15} {destino:<18} custo {rota.custo}  interface {rota.interface_de_saida}")
-    print()
+    conferir_tabela_3(topologia, conferir)
 
     # A linha 011 do log da especificacao: 10.0.3.0/24 via R4, custo 2, interface e1.
     rota = topologia.rota_para("R1", "10.0.3.10")
