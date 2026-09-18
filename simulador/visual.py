@@ -93,6 +93,25 @@ COR_LOGICO, FUNDO_LOGICO = "#0d47a1", "#e3eefb"
 COR_FISICO, FUNDO_FISICO = "#5e2a9e", "#efe8fa"
 COR_TEXTO, COR_TEXTO_FRACO = "#263238", "#78909c"
 
+# Paleta da janela. Nada aqui vem do sistema: a aparencia e a mesma num
+# Windows com tema claro, num Windows com tema escuro e num Linux qualquer.
+# Todo widget recebe fundo e cor de texto explicitos; nenhum herda o padrao.
+FUNDO_JANELA = "#f0f0f0"            # frames, barra de controle, barra lateral
+FUNDO_PAINEL = "#ffffff"            # canvas dos paineis desenhados
+FUNDO_CAMPO = "#ffffff"             # campos de texto e listas
+FUNDO_CAMPO_FIXO = "#eceff1"        # campo so de leitura (lista com escolha fixa)
+FUNDO_CAMPO_INATIVO = "#e4e6e7"     # campo desabilitado
+FUNDO_REGISTRO = "#fcfcfc"          # area do registro de eventos
+FUNDO_SALTOS = "#fafafa"            # lista de saltos
+FUNDO_BARRA_RESUMO = "#eeeeee"      # trilho da barra de eficiencia
+BORDA_CAMPO = "#9aa4ab"
+COR_TEXTO_INATIVO = "#9e9e9e"
+FUNDO_BOTAO, FUNDO_BOTAO_SOB, FUNDO_BOTAO_PRESSIONADO = "#e1e4e6", "#d6e6f7", "#c2d8ef"
+SELECAO_FUNDO, SELECAO_TEXTO = "#3d6ea8", "#ffffff"
+FUNDO_TRILHO, PUXADOR_ROLAGEM, PUXADOR_ROLAGEM_SOB = "#e8e8e8", "#bdc3c7", "#a4acb2"
+FUNDO_MENU, FUNDO_MENU_ATIVO = "#f7f7f7", "#3d6ea8"
+DESTAQUE_LINHA_ATUAL = "#fff3c4"    # linha do passo atual no registro
+
 
 # ----------------------------------------------------------------------
 # Configuracao escolhida na barra lateral
@@ -1330,7 +1349,7 @@ class Janela:
         raiz = self.raiz
         raiz.title("Simulador do modelo OSI")
         raiz.option_add("*tearOff", False)
-        estilo = ttk.Style(raiz)
+        estilo = self._fixar_paleta()
         estilo.configure("Invalido.TEntry", foreground=COR_DESCARTE)
         estilo.configure("Invalido.TCombobox", foreground=COR_DESCARTE)
         estilo.configure("Titulo.TLabel", font=self.fontes["titulo"])
@@ -1370,9 +1389,160 @@ class Janela:
         raiz.bind("<space>", self._tecla_espaco)
         raiz.bind("<Right>", self._tecla_direita)
 
+    def _fixar_paleta(self):
+        """Prende a janela inteira a paleta deste modulo, ignorando o tema do sistema.
+
+        Duas coisas sao precisas para isso. Primeiro o tema 'clam', o unico
+        que acompanha o Tk em todo sistema e desenha os widgets ttk com as
+        cores pedidas: os temas nativos ('vista' no Windows, 'aqua' no macOS)
+        pintam por conta propria e mudam com a aparencia do sistema. Depois,
+        cada estilo recebe fundo e cor de texto explicitos, inclusive nos
+        estados (desabilitado, so de leitura, sob o ponteiro, pressionado),
+        que no clam sao clareados a partir do fundo se ficarem de fora.
+
+        As opcoes de option_add valem para os widgets tk que o Tk cria por
+        dentro e que nao podem ser configurados daqui: a lista suspensa de
+        cada Combobox e os menus. Por isso este metodo vem antes de qualquer
+        widget da janela.
+        """
+        raiz = self.raiz
+        # A propria janela: o padrao de option_add ("*...") nao alcanca a raiz.
+        raiz.configure(bg=FUNDO_JANELA, highlightbackground=FUNDO_JANELA,
+                       highlightcolor=BORDA_CAMPO)
+        for opcao, valor in (
+            # Lista suspensa dos Combobox (um tk.Listbox criado pelo proprio Tk).
+            ("*TCombobox*Listbox.background", FUNDO_CAMPO),
+            ("*TCombobox*Listbox.foreground", COR_TEXTO),
+            ("*TCombobox*Listbox.selectBackground", SELECAO_FUNDO),
+            ("*TCombobox*Listbox.selectForeground", SELECAO_TEXTO),
+            # Qualquer Listbox ou Text que venha a existir sem cor propria.
+            ("*Listbox.background", FUNDO_CAMPO),
+            ("*Listbox.foreground", COR_TEXTO),
+            ("*Listbox.selectBackground", SELECAO_FUNDO),
+            ("*Listbox.selectForeground", SELECAO_TEXTO),
+            ("*Text.background", FUNDO_CAMPO),
+            ("*Text.foreground", COR_TEXTO),
+            ("*Text.insertBackground", COR_TEXTO),
+            ("*Text.selectBackground", SELECAO_FUNDO),
+            ("*Text.selectForeground", SELECAO_TEXTO),
+            ("*Entry.background", FUNDO_CAMPO),
+            ("*Entry.foreground", COR_TEXTO),
+            ("*Entry.insertBackground", COR_TEXTO),
+            ("*Entry.selectBackground", SELECAO_FUNDO),
+            ("*Entry.selectForeground", SELECAO_TEXTO),
+            # Um Canvas tambem tem cursor e selecao proprios, que no macOS vem
+            # de systemSelectedTextColor e mudam com o tema mesmo sem uso.
+            ("*Canvas.insertBackground", COR_TEXTO),
+            ("*Canvas.selectBackground", SELECAO_FUNDO),
+            ("*Canvas.selectForeground", SELECAO_TEXTO),
+            ("*Label.activeBackground", FUNDO_JANELA),
+            ("*Label.activeForeground", COR_TEXTO),
+            ("*Label.disabledForeground", COR_TEXTO_INATIVO),
+            # O anel de foco de qualquer widget tk. Onde a espessura e zero ele
+            # nao aparece, mas o padrao ainda era uma cor do sistema.
+            ("*highlightBackground", FUNDO_JANELA),
+            ("*highlightColor", BORDA_CAMPO),
+            # Menus: a barra e desenhada pelo sistema no Windows, os menus nao.
+            ("*Menu.background", FUNDO_MENU),
+            ("*Menu.foreground", COR_TEXTO),
+            ("*Menu.activeBackground", FUNDO_MENU_ATIVO),
+            ("*Menu.activeForeground", SELECAO_TEXTO),
+            ("*Menu.disabledForeground", COR_TEXTO_INATIVO),
+            ("*Menu.selectColor", COR_TEXTO),
+        ):
+            raiz.option_add(opcao, valor)
+
+        estilo = ttk.Style(raiz)
+        try:
+            estilo.theme_use("clam")
+        except tk.TclError:      # Tk sem o clam: segue com o tema em uso
+            pass
+
+        estilo.configure(
+            ".", background=FUNDO_JANELA, foreground=COR_TEXTO,
+            fieldbackground=FUNDO_CAMPO, insertcolor=COR_TEXTO,
+            troughcolor=FUNDO_TRILHO, bordercolor=BORDA_CAMPO,
+            lightcolor=FUNDO_JANELA, darkcolor=FUNDO_JANELA,
+            focuscolor=SELECAO_FUNDO, arrowcolor=COR_TEXTO,
+            selectbackground=SELECAO_FUNDO, selectforeground=SELECAO_TEXTO,
+        )
+        estilo.map(".", foreground=[("disabled", COR_TEXTO_INATIVO)])
+
+        estilo.configure("TFrame", background=FUNDO_JANELA)
+        estilo.configure("TLabel", background=FUNDO_JANELA, foreground=COR_TEXTO)
+        estilo.configure("TLabelframe", background=FUNDO_JANELA, bordercolor=BORDA_CAMPO,
+                         lightcolor=FUNDO_JANELA, darkcolor=FUNDO_JANELA)
+        estilo.configure("TLabelframe.Label", background=FUNDO_JANELA, foreground=COR_TEXTO)
+        estilo.configure("TSeparator", background=BORDA_CAMPO)
+        estilo.configure("TPanedWindow", background=FUNDO_JANELA)
+        estilo.configure("Sash", background=FUNDO_JANELA, lightcolor=FUNDO_JANELA,
+                         bordercolor=BORDA_CAMPO, gripcount=10)
+
+        estilo.configure("TButton", background=FUNDO_BOTAO, foreground=COR_TEXTO,
+                         bordercolor=BORDA_CAMPO, lightcolor=FUNDO_BOTAO,
+                         darkcolor=FUNDO_BOTAO, focuscolor=COR_TEXTO)
+        estilo.map("TButton",
+                   background=[("disabled", FUNDO_JANELA), ("pressed", FUNDO_BOTAO_PRESSIONADO),
+                               ("active", FUNDO_BOTAO_SOB)],
+                   lightcolor=[("pressed", FUNDO_BOTAO_PRESSIONADO), ("active", FUNDO_BOTAO_SOB)],
+                   darkcolor=[("pressed", FUNDO_BOTAO_PRESSIONADO), ("active", FUNDO_BOTAO_SOB)],
+                   foreground=[("disabled", COR_TEXTO_INATIVO)])
+
+        for classe in ("TCheckbutton", "TRadiobutton"):
+            estilo.configure(classe, background=FUNDO_JANELA, foreground=COR_TEXTO,
+                             indicatorbackground=FUNDO_CAMPO, indicatorforeground=COR_TEXTO,
+                             bordercolor=BORDA_CAMPO, lightcolor=FUNDO_JANELA,
+                             darkcolor=FUNDO_JANELA, focuscolor=COR_TEXTO)
+            estilo.map(classe,
+                       background=[("active", FUNDO_JANELA)],
+                       foreground=[("disabled", COR_TEXTO_INATIVO)],
+                       indicatorbackground=[("disabled", FUNDO_CAMPO_INATIVO),
+                                            ("pressed", FUNDO_BOTAO_PRESSIONADO),
+                                            ("selected", FUNDO_CAMPO), ("active", FUNDO_CAMPO)],
+                       indicatorforeground=[("disabled", COR_TEXTO_INATIVO),
+                                            ("selected", COR_TEXTO)])
+
+        for classe in ("TEntry", "TCombobox", "TSpinbox"):
+            estilo.configure(classe, foreground=COR_TEXTO, fieldbackground=FUNDO_CAMPO,
+                             background=FUNDO_BOTAO, insertcolor=COR_TEXTO,
+                             bordercolor=BORDA_CAMPO, lightcolor=FUNDO_CAMPO,
+                             darkcolor=FUNDO_CAMPO, arrowcolor=COR_TEXTO,
+                             selectbackground=SELECAO_FUNDO, selectforeground=SELECAO_TEXTO)
+            estilo.map(classe,
+                       fieldbackground=[("disabled", FUNDO_CAMPO_INATIVO),
+                                        ("readonly", FUNDO_CAMPO_FIXO)],
+                       foreground=[("disabled", COR_TEXTO_INATIVO)],
+                       background=[("disabled", FUNDO_CAMPO_INATIVO),
+                                   ("pressed", FUNDO_BOTAO_PRESSIONADO),
+                                   ("active", FUNDO_BOTAO_SOB)],
+                       arrowcolor=[("disabled", COR_TEXTO_INATIVO)],
+                       lightcolor=[("disabled", FUNDO_CAMPO_INATIVO),
+                                   ("readonly", FUNDO_CAMPO_FIXO)],
+                       darkcolor=[("disabled", FUNDO_CAMPO_INATIVO),
+                                  ("readonly", FUNDO_CAMPO_FIXO)],
+                       # Num Combobox so de leitura o texto aparece selecionado
+                       # enquanto o campo tem o foco; aqui ele fica igual ao resto.
+                       selectbackground=[("readonly", FUNDO_CAMPO_FIXO),
+                                         ("disabled", FUNDO_CAMPO_INATIVO)],
+                       selectforeground=[("readonly", COR_TEXTO),
+                                         ("disabled", COR_TEXTO_INATIVO)])
+
+        estilo.configure("TScrollbar", background=PUXADOR_ROLAGEM, troughcolor=FUNDO_TRILHO,
+                         bordercolor=FUNDO_TRILHO, lightcolor=PUXADOR_ROLAGEM,
+                         darkcolor=PUXADOR_ROLAGEM, arrowcolor=COR_TEXTO)
+        estilo.map("TScrollbar",
+                   background=[("disabled", FUNDO_TRILHO), ("active", PUXADOR_ROLAGEM_SOB)],
+                   lightcolor=[("active", PUXADOR_ROLAGEM_SOB)],
+                   darkcolor=[("active", PUXADOR_ROLAGEM_SOB)],
+                   arrowcolor=[("disabled", COR_TEXTO_INATIVO)])
+        return estilo
+
     def _menu(self):
-        barra = tk.Menu(self.raiz)
-        arquivo = tk.Menu(barra)
+        cores = dict(bg=FUNDO_MENU, fg=COR_TEXTO, activebackground=FUNDO_MENU_ATIVO,
+                     activeforeground=SELECAO_TEXTO, disabledforeground=COR_TEXTO_INATIVO,
+                     selectcolor=COR_TEXTO, borderwidth=1, activeborderwidth=1)
+        barra = tk.Menu(self.raiz, **cores)
+        arquivo = tk.Menu(barra, **cores)
         arquivo.add_command(label="Recarregar topologia", command=self.recarregar_topologia)
         arquivo.add_command(label="Salvar registro…", command=self.salvar_registro)
         arquivo.add_separator()
@@ -1483,10 +1653,7 @@ class Janela:
         moldura = ttk.Frame(corpo)
         moldura.pack(side="left", fill="y", padx=(0, 8))
         tela = tk.Canvas(moldura, highlightthickness=0, borderwidth=0, width=10, height=10,
-                         yscrollincrement=12)
-        fundo = ttk.Style(self.raiz).lookup("TFrame", "background")
-        if fundo:
-            tela.configure(bg=fundo)
+                         yscrollincrement=12, bg=FUNDO_JANELA)
         rolagem = ttk.Scrollbar(moldura, orient="vertical", command=tela.yview)
         tela.configure(yscrollcommand=rolagem.set)
         tela.pack(side="left", fill="y")
@@ -1610,7 +1777,7 @@ class Janela:
             valor.grid(row=i, column=1, sticky="e")
             self.valores_do_resumo[chave] = valor
         self.barra_do_resumo = tk.Canvas(resumo, width=10, height=12, highlightthickness=0,
-                                         bg="#eeeeee")
+                                         borderwidth=0, bg=FUNDO_BARRA_RESUMO)
         self.barra_do_resumo.grid(row=6, column=0, columnspan=2, sticky="ew", pady=(4, 2))
         self.entregas = ttk.Label(resumo, text="Aparece ao fim da execução.", style="Fraco.TLabel",
                                   justify="left")
@@ -1621,7 +1788,8 @@ class Janela:
         quadro = ttk.LabelFrame(pai, text=titulo, padding=2)
         quadro.grid(row=0, column=coluna, sticky="nsew", padx=(0, 4) if coluna == 0 else (4, 0),
                     pady=(0, 6))
-        canvas = tk.Canvas(quadro, bg="white", highlightthickness=0, width=10, height=10)
+        canvas = tk.Canvas(quadro, bg=FUNDO_PAINEL, highlightthickness=0, borderwidth=0,
+                           width=10, height=10)
         canvas.pack(fill="both", expand=True)
         canvas.bind("<Configure>", lambda _e: self._agendar_desenho())
         canvas.bind("<Button-1>", lambda _e: canvas.focus_set())
@@ -1637,7 +1805,7 @@ class Janela:
             # Titulo e donos das interfaces em cima, o par embaixo. Sem largura
             # para os dois na mesma linha, os donos descem para baixo do par.
             moldura = tk.Frame(quadro, bg=fundo, highlightthickness=1, highlightbackground=cor,
-                               padx=8, pady=2)
+                               highlightcolor=cor, borderwidth=0, padx=8, pady=2)
             moldura.pack(fill="x", pady=(0, 4))
             moldura.columnconfigure(0, weight=1)
             rotulo = tk.Label(moldura, text=titulo, bg=fundo, fg=cor, font=self.fontes["negrito"],
@@ -1663,8 +1831,16 @@ class Janela:
         self.nota_dos_saltos.pack(fill="x")
         moldura = ttk.Frame(quadro)
         moldura.pack(fill="both", expand=True)
+        # Todas as cores explicitas: sem elas o Tk usa as do sistema, e num tema
+        # escuro o texto sai claro sobre o fundo claro definido aqui.
         self.lista_de_saltos = tk.Text(moldura, height=2, wrap="none", font=self.fontes["mono"],
-                                       relief="flat", bg="#fafafa", state="disabled", cursor="arrow")
+                                       relief="flat", borderwidth=0, highlightthickness=0,
+                                       state="disabled", cursor="arrow",
+                                       bg=FUNDO_SALTOS, fg=COR_TEXTO,
+                                       insertbackground=COR_TEXTO,
+                                       selectbackground=SELECAO_FUNDO,
+                                       selectforeground=SELECAO_TEXTO,
+                                       inactiveselectbackground=SELECAO_FUNDO)
         rolagem = ttk.Scrollbar(moldura, orient="vertical", command=self.lista_de_saltos.yview)
         self.lista_de_saltos.configure(yscrollcommand=rolagem.set)
         rolagem.pack(side="right", fill="y")
@@ -1712,15 +1888,23 @@ class Janela:
         moldura.rowconfigure(0, weight=1)
         moldura.columnconfigure(0, weight=1)
         self.registro = tk.Text(moldura, height=4, wrap="none", font=self.fontes["mono"],
-                                state="disabled", relief="flat", bg="#fcfcfc")
+                                state="disabled", relief="flat", borderwidth=0,
+                                highlightthickness=0,
+                                bg=FUNDO_REGISTRO, fg=COR_TEXTO,
+                                insertbackground=COR_TEXTO,
+                                selectbackground=SELECAO_FUNDO,
+                                selectforeground=SELECAO_TEXTO,
+                                inactiveselectbackground=SELECAO_FUNDO)
         vertical = ttk.Scrollbar(moldura, orient="vertical", command=self.registro.yview)
         horizontal = ttk.Scrollbar(moldura, orient="horizontal", command=self.registro.xview)
         self.registro.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         self.registro.grid(row=0, column=0, sticky="nsew")
         vertical.grid(row=0, column=1, sticky="ns")
         horizontal.grid(row=1, column=0, sticky="ew")
+        # As etiquetas so mexem no fundo ou so na cor do texto: o que elas nao
+        # definem vem do fg e do bg do proprio widget, ambos fixados acima.
         self.registro.tag_configure("descarte", foreground=COR_DESCARTE)
-        self.registro.tag_configure("atual", background="#fff3c4")
+        self.registro.tag_configure("atual", background=DESTAQUE_LINHA_ATUAL)
         # O token Ln com o fundo da camada, a mesma cor da pilha e do bloco.
         # Criadas depois de "atual", essas etiquetas prevalecem na linha atual;
         # a selecao volta para cima de todas.
@@ -2199,7 +2383,7 @@ class Janela:
         barra.delete("all")
         if self.sim is None or not self.sim.terminou:
             for rotulo in valores.values():
-                rotulo.configure(text="—", foreground="")
+                rotulo.configure(text="—", foreground=COR_TEXTO)
             self.entregas.configure(text="Aparece ao fim da execução.", style="Fraco.TLabel")
             return
 
@@ -2211,7 +2395,7 @@ class Janela:
         sem_entrega = resumo.octetos_uteis == 0
         valores["eficiencia"].configure(
             text="sem entrega" if sem_entrega else porcentagem(resumo.eficiencia),
-            foreground=COR_DESCARTE if sem_entrega else "")
+            foreground=COR_DESCARTE if sem_entrega else COR_TEXTO)
         valores["sobrecarga"].configure(text=porcentagem(resumo.sobrecarga))
 
         barra.update_idletasks()
