@@ -39,7 +39,10 @@ from tkinter import filedialog, messagebox, ttk
 
 from .recursos import pasta_do_programa
 from .registro import formatar
-from .simulador import CENARIOS, Cenario, Falhas, Simulacao
+from .simulador import (
+    CENARIOS, PASTA_DOS_REGISTROS, Cenario, Falhas, Simulacao,
+    gerar_registros_dos_cenarios,
+)
 
 # ----------------------------------------------------------------------
 # Constantes de apresentacao
@@ -1545,6 +1548,8 @@ class Janela:
         arquivo = tk.Menu(barra, **cores)
         arquivo.add_command(label="Recarregar topologia", command=self.recarregar_topologia)
         arquivo.add_command(label="Salvar registro…", command=self.salvar_registro)
+        arquivo.add_command(label="Gerar registros dos sete cenários",
+                            command=self.regerar_registros)
         arquivo.add_separator()
         arquivo.add_command(label="Sair", command=self.fechar)
         barra.add_cascade(label="Arquivo", menu=arquivo)
@@ -1689,6 +1694,13 @@ class Janela:
             self._ligar_roda_da_lateral(filho)
 
     def _barra_lateral(self, lateral):
+        # Qual das duas origens de R10 esta em uso, sempre a vista: um
+        # topologia.json editado ao lado do executavel e a copia embutida
+        # descrevem redes possivelmente diferentes.
+        self.origem_da_topologia = ttk.Label(lateral, style="Fraco.TLabel", justify="left")
+        self.origem_da_topologia.pack(fill="x", pady=(0, 6))
+        self._quebraveis.append(self.origem_da_topologia)
+
         quadro = ttk.LabelFrame(lateral, text="Cenário", padding=(8, 4, 8, 6))
         quadro.pack(fill="x")
         quadro.columnconfigure(1, weight=1)
@@ -1978,6 +1990,7 @@ class Janela:
             return
 
         self.topologia, self.erro_de_topologia = topologia, None
+        self._mostrar_origem_da_topologia(topologia)
         self._enlaces = rotulos_de_enlace(topologia)
         self.campo["origem"]["values"] = topologia.computadores
         self.campo["destino"]["values"] = topologia.computadores
@@ -1986,6 +1999,42 @@ class Janela:
         self.raiz.title(f"Simulador do modelo OSI — {topologia.nome}")
         self._habilitar_configuracao(True)
         self._aplicar_cenario_base(getattr(self, "_codigo_base", next(iter(CENARIOS))))
+
+    def _mostrar_origem_da_topologia(self, topologia):
+        """Diz de onde a topologia veio: o arquivo ao lado ou a copia embutida."""
+        origem = getattr(topologia, "origem", None)
+        if origem is None:
+            self.origem_da_topologia.configure(text="")
+            return
+        if origem.embutida:
+            texto = (f"⚠ Topologia: cópia embutida no executável. "
+                     f"Não há topologia.json em {pasta_do_programa()}.")
+            estilo = "Erro.TLabel"
+        else:
+            texto = f"Topologia: topologia.json ao lado do programa ({origem.caminho})"
+            estilo = "Fraco.TLabel"
+        self.origem_da_topologia.configure(text=texto, style=estilo)
+
+    def regerar_registros(self):
+        """Regera a pasta registros/ com os sete cenarios, no formato oficial."""
+        if self.topologia is None:
+            messagebox.showinfo("Sem topologia",
+                                "Carregue uma topologia antes de gerar os registros.",
+                                parent=self.raiz)
+            return
+        try:
+            caminhos = gerar_registros_dos_cenarios(self.topologia)
+        except OSError as erro:
+            messagebox.showerror("Registros não gerados",
+                                 f"Não foi possível gravar a pasta "
+                                 f"{PASTA_DOS_REGISTROS}:\n{erro}", parent=self.raiz)
+            return
+        lista = "\n".join(f"{codigo}: {eventos} eventos" for codigo, _, eventos in caminhos)
+        messagebox.showinfo(
+            "Registros gerados",
+            f"{len(caminhos)} registros gravados em:\n"
+            f"{pasta_do_programa()}/{PASTA_DOS_REGISTROS}\n\n{lista}",
+            parent=self.raiz)
 
     def recarregar_topologia(self):
         self.pausar()
@@ -2392,9 +2441,12 @@ class Janela:
         valores["mensagem"].configure(text=f"{resumo.octetos_da_mensagem} B")
         valores["uteis"].configure(text=f"{resumo.octetos_uteis} B")
         valores["transmitidos"].configure(text=f"{resumo.octetos_transmitidos} B")
+        # Sem entrega a eficiencia e zero, e nao "indefinida": e o valor que a
+        # tabela de validacao traz para E5 e E6 (eta = 0). O vermelho apenas
+        # chama atencao; o numero exibido e o mesmo que o quadro resumo calcula.
         sem_entrega = resumo.octetos_uteis == 0
         valores["eficiencia"].configure(
-            text="sem entrega" if sem_entrega else porcentagem(resumo.eficiencia),
+            text=porcentagem(resumo.eficiencia),
             foreground=COR_DESCARTE if sem_entrega else COR_TEXTO)
         valores["sobrecarga"].configure(text=porcentagem(resumo.sobrecarga))
 

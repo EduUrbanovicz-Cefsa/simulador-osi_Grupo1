@@ -83,6 +83,33 @@ def _octetos(pdu):
     return pdu.tamanho
 
 
+class ContadorDeQuadros:
+    """Numeracao dos quadros, reiniciada a cada mensagem (C5).
+
+    C5 pede Q1, Q2, ... na ordem de transmissao, "reiniciando a cada
+    mensagem". A contagem nao pode entao ser global nem por dispositivo: ela
+    pertence a mensagem, que atravessa varios dispositivos. A chave e o par
+    de enderecos logicos, que por C6 e inserido na origem e permanece o mesmo
+    ate o destino -- e exatamente a identidade fim a fim que se procura.
+
+    Por ser dado de camada 3, essa chave esta ao alcance de todo salto,
+    inclusive de um roteador, sem violar C4. Usar a porta de origem daria o
+    mesmo resultado em E3 e obrigaria o roteador a ler um campo de camada 4.
+
+    Em E3 os dois fluxos tem origens logicas distintas (10.0.1.10 e
+    10.0.1.11) e cada um recebe Q1 a Q4. Em E7 os tres segmentos sao a mesma
+    mensagem, com o mesmo par logico, e a contagem segue de Q1 a Q12.
+    """
+
+    def __init__(self):
+        self._por_mensagem = {}
+
+    def proximo(self, logicos):
+        numero = self._por_mensagem.get(logicos, 0) + 1
+        self._por_mensagem[logicos] = numero
+        return numero
+
+
 @dataclass
 class Contexto:
     """O que a pilha de um dispositivo entrega a cada camada.
@@ -108,7 +135,7 @@ class Contexto:
     proximo_salto: str = None
 
     passos: object = field(default_factory=lambda: itertools.count(1))
-    quadros: object = field(default_factory=lambda: itertools.count(1))
+    quadros: object = field(default_factory=ContadorDeQuadros)
     sessoes: object = field(default_factory=lambda: itertools.count(1))
 
     def proximo_passo(self):
@@ -236,6 +263,26 @@ class Transporte(Camada):
         self._pendentes = {}
 
     def descer(self, pdu, contexto):
+        # Por que existe um limiar separado do limite de 40 octetos
+        # ---------------------------------------------------------
+        # C2 diz que a camada 4 divide em segmentos de no maximo 40 octetos
+        # os dados que recebe da camada 5. Ao pe da letra, a mensagem de
+        # referencia de 42 octetos chegaria aqui com 46 (42 + 4 do cabecalho
+        # de sessao) e viraria dois segmentos, de 40 e 6.
+        #
+        # Isso contradiz a propria tabela de validacao da especificacao: o
+        # log oficial traz "004 | H1 | L4 | SEGMENTA | porta 5210 -> 443,
+        # segmento 1 de 1  54 B", um unico segmento, e E1 a E6 so fecham em
+        # 92 octetos por quadro com um segmento. Dois segmentos dariam dois
+        # quadros por enlace e derrubariam os sete valores oficiais.
+        #
+        # A leitura que reproduz todos os numeros da especificacao e a de
+        # que 40 e o tamanho de corte, aplicado quando a mensagem e longa o
+        # bastante para exigir divisao. O limiar guarda esse "longa o
+        # bastante" e vem do topologia.json, nao do codigo. E7 (100 octetos
+        # -> 104 -> 40, 40 e 24) continua exato, e E1 a E6 tambem.
+        #
+        # Nao altere o limiar sem refazer a tabela de validacao inteira.
         convencoes = contexto.topologia.convencoes
         limiar = convencoes["limiar_segmentacao_octetos"]
         limite = convencoes["limite_segmento_octetos"]
@@ -437,7 +484,9 @@ class Enlace(Camada):
         topologia = contexto.topologia
         saida = topologia.interface_de(contexto.dispositivo, contexto.interface_de_saida)
         vizinho = self._interface_do_vizinho(topologia, contexto.proximo_salto, saida.rede)
-        numero = f"Q{next(contexto.quadros)}"
+        # A numeracao acompanha a mensagem, nao o dispositivo (C5): a chave e
+        # o par de enderecos logicos, que a camada 2 le da propria PDU.
+        numero = f"Q{contexto.quadros.proximo(pdu.logicos)}"
 
         cabecalho = Cabecalho(2, self._tamanho_do_cabecalho(contexto), {
             "origem": saida.fisico, "destino": vizinho.fisico,
@@ -450,10 +499,14 @@ class Enlace(Camada):
             finalizador=True,
         )
         quadro = quadro.encapsular(finalizador)
+        # O pacote identifica a mensagem na linha do registro. Em E3 os dois
+        # fluxos tem quadros de mesmo numero em cada salto, e e o pacote
+        # (H1-P1 e H2-P1) que diz de quem e cada quadro. A porta de origem
+        # faria o mesmo papel, mas so a custo de o roteador ler camada 4 (C4).
         return (quadro,), [self._evento(
             contexto, "ENQUADRA",
-            f"quadro {numero} para {vizinho.dispositivo}: {saida.fisico} -> "
-            f"{vizinho.fisico}; soma {soma:#010x}",
+            f"pacote {pdu.id_pacote}, quadro {numero} para {vizinho.dispositivo}: "
+            f"{saida.fisico} -> {vizinho.fisico}; soma {soma:#010x}",
             quadro,
         )]
 
@@ -476,8 +529,8 @@ class Enlace(Camada):
         if calculada != recebida:
             return (), [self._evento(
                 contexto, "DESCARTA",
-                f"quadro {pdu.numero_quadro}: soma recebida {recebida:#010x} "
-                f"difere da calculada {calculada:#010x}; quadro descartado",
+                f"pacote {pdu.id_pacote}, quadro {pdu.numero_quadro}: soma recebida "
+                f"{recebida:#010x} difere da calculada {calculada:#010x}; quadro descartado",
                 pdu,
             )]
 
@@ -485,7 +538,8 @@ class Enlace(Camada):
         pacote = pdu.desencapsular(2, camada=3).com_fisicos(None, None, "")
         return (pacote,), [self._evento(
             contexto, "DESENQUADRA",
-            f"quadro {pdu.numero_quadro} de {origem} conferido e descartado",
+            f"pacote {pdu.id_pacote}, quadro {pdu.numero_quadro} de {origem} "
+            f"conferido e descartado",
             pacote,
         )]
 
@@ -500,8 +554,8 @@ class Fisica(Camada):
         bits = replace(pdu, camada=1)
         return (bits,), [self._evento(
             contexto, "TRANSMITE",
-            f"quadro {pdu.numero_quadro} convertido em {bits.tamanho_em_bits} bits "
-            f"e transmitido",
+            f"pacote {pdu.id_pacote}, quadro {pdu.numero_quadro} convertido em "
+            f"{bits.tamanho_em_bits} bits e transmitido",
             bits,
         )]
 
@@ -509,7 +563,7 @@ class Fisica(Camada):
         quadro = replace(pdu, camada=2)
         return (quadro,), [self._evento(
             contexto, "RECEBE",
-            f"{pdu.tamanho_em_bits} bits recebidos e reagrupados no quadro "
-            f"{pdu.numero_quadro}",
+            f"{pdu.tamanho_em_bits} bits recebidos e reagrupados no pacote "
+            f"{pdu.id_pacote}, quadro {pdu.numero_quadro}",
             quadro,
         )]

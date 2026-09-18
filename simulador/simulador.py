@@ -20,11 +20,17 @@ Os cenarios E1 a E7 sao dados: a tabela CENARIOS, no fim do modulo.
 
 import copy
 import itertools
+import os
 from collections import deque
 from dataclasses import dataclass, field, replace
 
+from .camadas import ContadorDeQuadros
 from .dispositivos import criar_dispositivo
+from .recursos import caminho_de
 from .registro import Evento, Registro
+
+# Pasta dos registros dos sete cenarios, ao lado do programa (R10).
+PASTA_DOS_REGISTROS = "registros"
 
 
 # ----------------------------------------------------------------------
@@ -167,7 +173,9 @@ class Simulacao:
         self._passos = itertools.count(1)
         self._contadores = {
             "passos": self._passos,
-            "quadros": itertools.count(1),
+            # Um contador por mensagem, e nao um contador global: C5 reinicia
+            # a numeracao dos quadros a cada mensagem (ver ContadorDeQuadros).
+            "quadros": ContadorDeQuadros(),
             "sessoes": itertools.count(1),
         }
         self._dispositivos = {}
@@ -289,8 +297,8 @@ class Simulacao:
                 evento = Evento(
                     passo=next(self._passos), dispositivo=de, camada=1,
                     acao="DESCARTA",
-                    descricao=f"enlace {de}-{para} fora de servico; "
-                              f"quadro {quadro.numero_quadro} perdido",
+                    descricao=f"enlace {de}-{para} fora de servico; pacote "
+                              f"{quadro.id_pacote}, quadro {quadro.numero_quadro} perdido",
                     tamanho=quadro.tamanho,
                 )
                 passos.append((evento, quadro))
@@ -342,6 +350,28 @@ NAVEGADOR_E_SERVIDOR = ("navegador", "servidorWeb")
 # O caso central: navegador, porta 5210, em H1, para servidorWeb, porta 443,
 # em H4. E4, E5 e E6 sao este mesmo envio com uma falha injetada.
 FLUXO_CENTRAL = Fluxo("H1", "H4", NAVEGADOR_E_SERVIDOR, (5210, 443), MENSAGEM_E2)
+
+def gerar_registros_dos_cenarios(topologia, pasta=None):
+    """Regera registros/registro_E1.txt a registro_E7.txt; devolve o que gravou.
+
+    Existe para que os registros entregues nunca fiquem defasados do codigo:
+    em vez de salvos um a um e a mao, os sete saem de uma execucao limpa de
+    cada cenario, no formato oficial de R8. A pasta fica ao lado do programa,
+    e nunca na pasta temporaria do empacotador (R10).
+
+    Devolve uma lista de (codigo, caminho, numero de eventos).
+    """
+    destino = pasta or caminho_de(PASTA_DOS_REGISTROS)
+    os.makedirs(destino, exist_ok=True)
+    gravados = []
+    for codigo, cenario in CENARIOS.items():
+        sim = Simulacao(topologia, cenario)
+        sim.executar()
+        caminho = os.path.join(destino, f"registro_{codigo}.txt")
+        sim.registro.salvar_em_arquivo(caminho)
+        gravados.append((codigo, caminho, len(sim.eventos)))
+    return gravados
+
 
 CENARIOS = {c.codigo: c for c in (
     Cenario("E1", "Entrega direta", (
