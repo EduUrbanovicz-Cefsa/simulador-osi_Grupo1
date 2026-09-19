@@ -11,9 +11,7 @@
     },
     "finalizador_camada_2": 4,
     "limiar_segmentacao_octetos": 64,
-    "limite_segmento_octetos": 40,
-    "cabecalho_sessao_por_segmento": false,
-    "desempate_de_rota": "menor identificador de roteador"
+    "limite_segmento_octetos": 40
   },
 
   "redes": [
