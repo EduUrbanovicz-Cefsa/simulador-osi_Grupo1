@@ -23,6 +23,21 @@ python main.py            # abre a interface gráfica
 python main.py --texto    # executa em modo texto, sem janela
 ```
 
+### Gerar o executável
+
+O `SimuladorOSI.spec` já está pronto e é o mesmo nos dois sistemas:
+
+```
+pyinstaller SimuladorOSI.spec
+```
+
+O `topologia.json` entra embutido como cópia de reserva. O separador de
+`--add-data` (`:` no macOS e no Linux, `;` no Windows) não aparece aqui porque
+o spec usa pares `(origem, destino)`, que o PyInstaller resolve sozinho — por
+isso não há nada a editar ao trocar de sistema. O equivalente em linha de
+comando, caso se prefira, seria `--add-data "topologia.json:."` no macOS e
+`--add-data "topologia.json;."` no Windows.
+
 ## Descrição
 
 O simulador transporta uma mensagem entre dois computadores de uma rede com três redes locais, quatro roteadores e cinco computadores, e exibe passo a passo o que cada camada de cada dispositivo faz com a unidade de dados que recebe. Os computadores implementam as sete camadas do modelo OSI; os roteadores implementam apenas as três primeiras.
@@ -37,10 +52,17 @@ simulador-osi_Grupo1/
 ├── topologia.json        Rede simulada, editável, ao lado do executável
 ├── main.py               Ponto de entrada do código-fonte
 ├── simulador/            Código-fonte do simulador
+├── SimuladorOSI.spec     Receita do PyInstaller, igual no Windows e no macOS
 ├── testes/               Verificação dos valores de referência
 ├── registros/            Registros de eventos dos sete cenários
 └── docs/                 Tutoriais, documentação técnica e capturas
 ```
+
+Os arquivos de `registros/` são gerados pelo próprio programa, e não à mão:
+**Arquivo → Gerar registros dos sete cenários** na interface, ou a opção 7 do
+menu em modo texto. Regerá-los depois de qualquer mudança no código garante
+que nunca fiquem defasados. Eles são gravados ao lado do executável, nunca na
+pasta temporária do empacotador.
 
 ## Arquivos de código
 
@@ -54,7 +76,7 @@ simulador-osi_Grupo1/
 | `simulador/simulador.py` | Motor da simulação e definição dos sete cenários |
 | `simulador/registro.py` | Formatação e gravação do registro de eventos |
 | `simulador/visual.py` | Interface gráfica em tkinter |
-| `simulador/recursos.py` | Localização do arquivo de topologia ao lado do programa |
+| `simulador/recursos.py` | Topologia ao lado do programa, com a cópia embutida de reserva |
 
 ## Requisitos de ambiente
 
@@ -89,9 +111,18 @@ Os sete cenários da especificação são selecionáveis na interface e reproduz
 | E2 Entrega indireta | 4 | 368 | 11,4% |
 | E3 Demultiplexação | 8 | 736 | 11,4% |
 | E4 Falha de enlace | 4 | 368 | 11,4% |
-| E5 Destino inalcançável | 1 | 92 | 0 |
-| E6 Erro de transmissão | 3 | 276 | 0 |
+| E5 Destino inalcançável | 1 | 92 | 0,0% |
+| E6 Erro de transmissão | 3 | 276 | 0,0% |
 | E7 Mensagem longa | 12 | 968 | 10,3% |
+
+Em E5 e E6 nenhum octeto útil chega ao destino: a eficiência é **0**, e é esse
+valor que aparece no quadro resumo, na interface e no modo texto.
+
+Os quadros são numerados na ordem de transmissão e reiniciam a cada mensagem
+(convenção C5). Em E3, que tem duas mensagens simultâneas, cada uma vai de Q1
+a Q4; no registro, o pacote (`H1-P1` e `H2-P1`) diz de qual fluxo é cada
+quadro. A porta de origem de cada fluxo (5210 e 6120) aparece nas linhas de
+camada 4 de H1, H2 e H4 — os roteadores não a leem, porque não têm camada 4.
 
 A conferência é automatizada. Com o código-fonte, `python testes/teste_cenarios.py` executa os sete cenários e compara cada valor com a tabela acima.
 

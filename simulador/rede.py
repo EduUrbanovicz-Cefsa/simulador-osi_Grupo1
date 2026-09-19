@@ -12,7 +12,7 @@ camada 2 apenas entrega ao vizinho que a camada 3 indicou.
 import json
 from dataclasses import dataclass, field
 
-from .recursos import caminho_de
+from .recursos import localizar
 
 # Custo devolvido quando nao existe caminho ate a rede procurada.
 INALCANCAVEL = float("inf")
@@ -99,15 +99,28 @@ class Topologia:
         # escolha de rota enquanto estiverem aqui, e o caso E4 depende disso.
         self.enlaces_derrubados = set()
 
+        # De onde esta topologia foi lida (R10). Preenchido por carregar();
+        # fica None quando a topologia e montada direto de um dicionario.
+        self.origem = None
+
     # ------------------------------------------------------------------
     # Carga
     # ------------------------------------------------------------------
 
     @classmethod
     def carregar(cls, nome_do_arquivo="topologia.json"):
-        """Le a topologia de um arquivo ao lado do programa."""
-        with open(caminho_de(nome_do_arquivo), encoding="utf-8") as arquivo:
-            return cls(json.load(arquivo))
+        """Le a topologia ao lado do programa ou, na falta dela, a embutida (R10).
+
+        A topologia lida guarda em .origem de qual das duas ela veio, para que
+        a interface possa dizer isso ao usuario: um arquivo editado ao lado do
+        executavel e uma copia embutida produzem redes diferentes, e quem
+        avalia precisa saber qual esta em uso.
+        """
+        origem = localizar(nome_do_arquivo)
+        with open(origem.caminho, encoding="utf-8") as arquivo:
+            topologia = cls(json.load(arquivo))
+        topologia.origem = origem
+        return topologia
 
     # ------------------------------------------------------------------
     # Enderecos

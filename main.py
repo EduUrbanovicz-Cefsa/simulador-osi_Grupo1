@@ -5,19 +5,24 @@ janela grafica de simulador/visual.py. Com o argumento --texto, a escolha
 do cenario, a execucao, o registro e o quadro resumo ficam num menu no
 terminal; o mesmo menu assume quando o tkinter nao consegue abrir a janela.
 A topologia vem de topologia.json, procurado ao lado do programa por
-recursos.py; trocar esse arquivo troca a rede sem gerar outro executavel.
+recursos.py e, so na falta dele, na copia embutida no executavel (R10);
+trocar esse arquivo troca a rede sem gerar outro executavel. Os dois modos
+dizem qual das duas origens esta em uso.
 
 Nenhum dos modos fecha sozinho. No terminal, ao sair pelo menu, diante de um
 erro ou de um Ctrl+C, o programa sempre termina pedindo Enter.
 """
 
 import json
+import os
 import sys
 import traceback
 
-from simulador.recursos import caminho_de, pasta_do_programa
+from simulador.recursos import caminho_de, pasta_do_programa, pasta_embutida
 from simulador.rede import Topologia
-from simulador.simulador import CENARIOS, Simulacao
+from simulador.simulador import (
+    CENARIOS, PASTA_DOS_REGISTROS, Simulacao, gerar_registros_dos_cenarios,
+)
 
 ARQUIVO_DA_TOPOLOGIA = "topologia.json"
 
@@ -35,9 +40,16 @@ def carregar_topologia():
     try:
         return Topologia.carregar(ARQUIVO_DA_TOPOLOGIA)
     except FileNotFoundError:
+        # So chega aqui quando nem o arquivo ao lado do programa nem a copia
+        # embutida existem: sem empacotamento, a copia embutida nao existe.
+        embutida = pasta_embutida()
+        reserva = (f"A copia embutida tambem nao foi encontrada em: {embutida}\n"
+                   if embutida else
+                   "Esta execucao vem do codigo-fonte e nao tem copia embutida.\n")
         raise TopologiaInvalida(
             f"Arquivo nao encontrado: {ARQUIVO_DA_TOPOLOGIA}\n"
             f"Procurado em: {pasta_do_programa()}\n"
+            f"{reserva}"
             f"Coloque o {ARQUIVO_DA_TOPOLOGIA} na mesma pasta do programa e abra-o de novo."
         ) from None
     except json.JSONDecodeError as erro:
@@ -80,12 +92,6 @@ def porcentagem(fracao):
     return f"{fracao * 100:.1f}%".replace(".", ",")
 
 
-def descrever_eficiencia(resumo):
-    if resumo.octetos_uteis == 0:
-        return "sem entrega"
-    return porcentagem(resumo.eficiencia)
-
-
 def imprimir_resumo(sim):
     resumo = sim.resumo()
     cenario = sim.cenario
@@ -94,8 +100,12 @@ def imprimir_resumo(sim):
     print(f"  Tamanho da mensagem .......... {resumo.octetos_da_mensagem} B")
     print(f"  Octetos uteis entregues ...... {resumo.octetos_uteis} B")
     print(f"  Octetos transmitidos ......... {resumo.octetos_transmitidos} B")
-    print(f"  Eficiencia ................... {descrever_eficiencia(resumo)}")
+    # Sem entrega, a eficiencia e zero, e nao "indefinida": e o que a tabela
+    # de validacao traz para E5 e E6 (eta = 0).
+    print(f"  Eficiencia ................... {porcentagem(resumo.eficiencia)}")
     print(f"  Sobrecarga ................... {porcentagem(resumo.sobrecarga)}")
+    if resumo.octetos_uteis == 0:
+        print("  (nenhuma mensagem chegou ao destino: nenhum octeto util entregue)")
 
 
 def imprimir_enlaces(sim):
@@ -123,12 +133,17 @@ class Menu:
         return CENARIOS[self.codigo]
 
     def cabecalho(self):
+        origem = self.topologia.origem
         print()
         print("=" * 60)
         print(" Simulador do modelo OSI")
         print("=" * 60)
         print(f" Topologia: {self.topologia.nome}")
-        print(f" Arquivo:   {caminho_de(ARQUIVO_DA_TOPOLOGIA)}")
+        # Qual das duas origens de R10 esta em uso, sempre a vista.
+        print(f" Origem:    {origem.descricao if origem else 'desconhecida'}")
+        print(f" Arquivo:   {origem.caminho if origem else caminho_de(ARQUIVO_DA_TOPOLOGIA)}")
+        if origem and origem.embutida:
+            print(f"            (nao ha {ARQUIVO_DA_TOPOLOGIA} em {pasta_do_programa()})")
         situacao = "executado" if self.sim else "ainda nao executado"
         print(f" Cenario:   {self.codigo} {self.cenario.nome} ({situacao})")
         print()
@@ -138,6 +153,7 @@ class Menu:
         print("  4. Ver quadro resumo")
         print("  5. Salvar registro em arquivo")
         print(f"  6. Recarregar {ARQUIVO_DA_TOPOLOGIA}")
+        print(f"  7. Regerar {PASTA_DOS_REGISTROS}/ com os sete cenarios")
         print("  0. Sair")
 
     def escolher_cenario(self):
@@ -192,6 +208,12 @@ class Menu:
         self.sim.registro.salvar_em_arquivo(caminho)
         print(f"  Registro salvo em: {caminho}")
 
+    def regerar_registros(self):
+        caminhos = gerar_registros_dos_cenarios(self.topologia)
+        titulo(f"Registros regerados em {caminho_de(PASTA_DOS_REGISTROS)}")
+        for codigo, caminho, eventos in caminhos:
+            print(f"  {codigo}: {eventos:>3} eventos -> {os.path.basename(caminho)}")
+
     def recarregar(self):
         try:
             self.topologia = carregar_topologia()
@@ -200,7 +222,9 @@ class Menu:
             print("  A topologia anterior continua em uso.")
             return
         self.sim = None
+        origem = self.topologia.origem
         print(f"  Topologia recarregada: {self.topologia.nome}")
+        print(f"  Origem: {origem.descricao if origem else 'desconhecida'}")
 
     def rodar(self):
         acoes = {
@@ -210,6 +234,7 @@ class Menu:
             "4": self.ver_resumo,
             "5": self.salvar_registro,
             "6": self.recarregar,
+            "7": self.regerar_registros,
         }
         while True:
             self.cabecalho()
@@ -218,7 +243,7 @@ class Menu:
                 return
             acao = acoes.get(opcao)
             if acao is None:
-                print(f"  Opcao invalida: {opcao!r}. Digite um numero de 0 a 6.")
+                print(f"  Opcao invalida: {opcao!r}. Digite um numero de 0 a 7.")
                 continue
             # Um erro numa acao volta ao menu em vez de encerrar o programa.
             try:
