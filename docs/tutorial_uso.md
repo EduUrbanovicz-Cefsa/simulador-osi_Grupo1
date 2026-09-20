@@ -161,7 +161,33 @@ Um raio marca o enlace afetado no mapa. A camada 2 de R3 recalcula a verificaç�
 
 ---
 
-## 8. Salvar o registro de eventos
+## 8. Dois fluxos simultâneos e mensagem longa
+
+Dois cenários exercitam a camada 4 de maneiras que os demais não alcançam.
+
+### E3 · Demultiplexação
+
+H1 e H2 enviam ao mesmo tempo para o processo `servidorWeb` de H4, com portas de origem distintas:
+
+![Demultiplexação no E3](./midia/16_e3_demultiplexacao.png)
+
+As duas origens aparecem nas pilhas de camadas, e o painel esquerdo informa o segundo fluxo abaixo da mensagem. A camada 4 de H4 separa os fluxos pelo par de portas e entrega cada um à sua sessão, S-0001 e S-0002, conforme indica o Quadro resumo com duas entregas.
+
+A numeração dos quadros reinicia a cada mensagem, de modo que Q1 a Q4 aparecem duas vezes na lista de saltos, uma vez por fluxo, com endereços físicos de origem distintos no primeiro enlace.
+
+### E7 · Mensagem longa
+
+H1 envia uma mensagem de 100 octetos, acima do limiar de segmentação:
+
+![Segmentação no E7](./midia/17_e7_mensagem_longa.png)
+
+O campo Mensagem informa `100 octetos · acima de 64: a camada 4 segmenta`. A camada 5 acrescenta seu cabeçalho de 4 octetos e a camada 4 recebe 104, que divide em três segmentos de 40, 40 e 24 octetos.
+
+Cada segmento percorre a rede por conta própria, totalizando doze quadros, Q1 a Q12. A camada 4 de H4 guarda os segmentos conforme chegam e só entrega à camada 5 depois de remontar os três na ordem correta, como registra a linha `REMONTA | 3 segmento(s) do fluxo 5210 -> 443 remontado(s) em ordem`.
+
+---
+
+## 9. Salvar o registro de eventos
 
 Clique em **Salvar em arquivo...**, no canto direito da faixa do registro:
 
@@ -177,7 +203,7 @@ Para gerar de uma vez os registros dos sete cenários, use **Arquivo → Gerar r
 
 ---
 
-## 9. Conferir um resultado conhecido
+## 10. Conferir um resultado conhecido
 
 Para confirmar que o simulador produz na sua máquina os valores da especificação, reproduza o cenário E2:
 
@@ -233,10 +259,10 @@ Conferindo esses valores, o simulador reproduz a tabela de validação da especi
 |---|---|---|---|---|
 | E1 Entrega direta | 15 | 1 | 92 | 45,7% |
 | E2 Entrega indireta | 30 | 4 | 368 | 11,4% |
-| E3 Demultiplexação | — | 8 | 736 | 11,4% |
+| E3 Demultiplexação | 60 | 8 | 736 | 11,4% |
 | E4 Falha de enlace | 30 | 4 | 368 | 11,4% |
 | E5 Destino inalcançável | 11 | 1 | 92 | 0 |
 | E6 Erro de transmissão | 20 | 3 | 276 | 0 |
-| E7 Mensagem longa | — | 12 | 968 | 10,3% |
+| E7 Mensagem longa | 78 | 12 | 968 | 10,3% |
 
 A comparação entre E1 e E2 é a que o projeto existe para tornar visível: a mesma mensagem de 42 octetos, transportada por um enlace ou por quatro, tem a eficiência caindo de 45,7% para 11,4% sem que um único octeto de dado a mais tenha sido enviado.
